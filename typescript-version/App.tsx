@@ -66,7 +66,7 @@ const App: React.FC = () => {
           msg.id === aiMsgId 
             ? { 
                 ...msg, 
-                text: `**Backend Connection Error:**\n\`${errorMessage}\`\n\n*Note: The frontend is trying to reach the local \`/api/agent\` proxy. Ensure your Next.js/Express backend is running, and that \`GOOGLE_APPLICATION_CREDENTIALS\` is properly configured in your server environment.*`, 
+                text: `**Connection Error:**\n\`${errorMessage}\`\n\n*Note: The frontend is connecting to the local backend proxy, which uses Application Default Credentials (ADC) to reach Vertex AI.*`, 
                 isStreaming: false 
               } 
             : msg
