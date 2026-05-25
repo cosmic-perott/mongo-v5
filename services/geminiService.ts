@@ -1,67 +1,100 @@
-import { GoogleGenAI, Chat } from '@google/genai';
-import { SYSTEM_INSTRUCTION } from '../constants.ts';
+// The Agent ID must be provided via environment variables in the format:
+// projects/{project_id}/locations/{location_id}/reasoningEngines/{agent_id}
+const AGENT_ID = process.env.AGENT_ID || '';
 
-// Initialize the SDK. Assumes process.env.API_KEY is available in the environment.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY, vertexai: true });
+let currentSessionId: string | null = null;
+// Generate a unique user ID for this browser session
+const userId = "user-" + Math.random().toString(36).substring(7);
 
-let chatSession: Chat | null = null;
-
-export const initChat = () => {
-  chatSession = ai.chats.create({
-    model: 'gemini-2.5-flash',
-    config: {
-      systemInstruction: SYSTEM_INSTRUCTION,
-      temperature: 0.7, // Slightly creative but focused
-    },
-  });
+const getBaseUrl = () => {
+  if (!AGENT_ID) {
+    throw new Error("AGENT_ID environment variable is missing. Please set it to your deployed Agent ID (projects/.../locations/.../reasoningEngines/...).");
+  }
+  const parts = AGENT_ID.split('/');
+  if (parts.length < 6) {
+     throw new Error("Invalid AGENT_ID format. Expected: projects/{project_id}/locations/{location_id}/reasoningEngines/{agent_id}");
+  }
+  const locationId = parts[3];
+  return `https://${locationId}-aiplatform.googleapis.com/v1/${AGENT_ID}`;
 };
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+export const initChat = async () => {
+  const baseUrl = getBaseUrl();
+  
+  // Step 1: Create a Session
+  const response = await fetch(`${baseUrl}:query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      classMethod: 'async_create_session',
+      input: { user_id: userId }
+    })
+  });
 
-const fetchWithRetry = async (session: Chat, message: string, maxRetries = 3) => {
-  let attempt = 0;
-  while (attempt < maxRetries) {
-    try {
-      return await session.sendMessageStream({ message });
-    } catch (error: any) {
-      attempt++;
-      const status = error?.status || error?.response?.status;
-      
-      // Retry on 429 (Too Many Requests) or 5xx (Server Errors)
-      if (attempt >= maxRetries || (status && status !== 429 && status < 500)) {
-        throw error;
-      }
-      
-      const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
-      console.warn(`API error (${status || 'unknown'}). Retrying in ${Math.round(delay)}ms... (Attempt ${attempt} of ${maxRetries})`);
-      await sleep(delay);
-    }
+  if (!response.ok) {
+    throw new Error(`Failed to create ADK session: ${response.statusText}`);
   }
-  throw new Error("Max retries reached");
+
+  const data = await response.json();
+  currentSessionId = data.output.id;
 };
 
 export const sendMessageStream = async function* (message: string) {
-  if (!chatSession) {
-    initChat();
-  }
-  
-  if (!chatSession) {
-    throw new Error("Failed to initialize chat session.");
+  if (!currentSessionId) {
+    await initChat();
   }
 
-  try {
-    const responseStream = await fetchWithRetry(chatSession, message);
-    for await (const chunk of responseStream) {
-      if (chunk.text) {
-        yield chunk.text;
+  const baseUrl = getBaseUrl();
+  
+  // Step 2: Stream Query using the session ID
+  const response = await fetch(`${baseUrl}:streamQuery`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      classMethod: 'async_stream_query',
+      input: {
+        user_id: userId,
+        session_id: currentSessionId,
+        message: message
       }
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to stream query from ADK: ${response.statusText}`);
+  }
+
+  if (!response.body) {
+    throw new Error("Response body is null");
+  }
+
+  const decoder = new TextDecoder();
+  
+  // @ts-ignore - async iteration over ReadableStream is supported in modern browsers
+  for await (const chunk of response.body) {
+    const chunkText = decoder.decode(chunk, { stream: true });
+    
+    try {
+      // Handle potential multiple JSON objects separated by newlines (NDJSON format)
+      const lines = chunkText.split('\n').filter(line => line.trim() !== '');
+      
+      for (const line of lines) {
+        const data = JSON.parse(line);
+        
+        // Extract the text part from the ADK response structure
+        if (data.content && data.content.parts && data.content.parts.length > 0) {
+          const text = data.content.parts[0].text;
+          if (text) {
+            yield text;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to parse ADK chunk:", chunkText);
     }
-  } catch (error) {
-    console.error("Error communicating with Gemini:", error);
-    throw error;
   }
 };
 
 export const resetChat = () => {
-  chatSession = null;
+  currentSessionId = null;
 };
