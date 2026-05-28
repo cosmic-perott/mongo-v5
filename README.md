@@ -5,4 +5,6 @@
 
 
 ***all code, architecture, ideas were made by cosmic-perott for the Google Cloud Rapid Agent Hackathon 2026***
+
+
 # MongoTrips: Travel Agent Based on MongoDB
