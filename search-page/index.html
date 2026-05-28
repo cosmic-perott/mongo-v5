@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MongoTrips</title>
+</head>
+<body>
+
+  <div class="planner-card">
+    <h1>MongoTrips</h1>
+    <form onsubmit="return false;" autocomplete="off">
+      <div class="input-group">
+        <label for="locationInput">Location</label>
+        <input type="text" id="locationInput" placeholder="Type a city, state, or country...">
+        <div id="autocompleteList" class="autocomplete-items"></div>
+      </div>
+
+      <div class="date-row">
+        <div class="input-group">
+          <label for="startDate">Start Date</label>
+          <input type="date" id="startDate" value="2026-06-01">
+        </div>
+        <div class="input-group">
+          <label for="endDate">End Date</label>
+          <input type="date" id="endDate" value="2026-06-07">
+        </div>
+      </div>
+
+      <div class="input-group">
+        <label for="guests">Number of People</label>
+        <input type="number" id="guests" min="1" max="10" value="2">
+      </div>
+
+      <button type="submit" class="submit-btn">Search</button>
+    </form>
+  </div>
+<style src="style.css"></style>
+<script src="script.js"></script>
+
+</body>
+</html>
